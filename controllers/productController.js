@@ -150,7 +150,6 @@ const createProductReview = async (req, res) => {
         return res.status(400).json({ message: 'Product already reviewed' });
       }
 
-      // 🔥 PARALLEL UPLOAD FOR REVIEW IMAGES (Wraps single file in array)
       let reviewImage = '';
       if (req.file) {
         const urls = await uploadImagesInParallel([req.file]);
@@ -171,8 +170,9 @@ const createProductReview = async (req, res) => {
         product.reviews.reduce((acc, item) => item.rating + acc, 0) /
         product.reviews.length;
 
-      await product.save();
-      res.status(201).json({ message: 'Review added' });
+      // 🔥 FIX: Save and immediately return the newly updated product
+      const updatedProduct = await product.save();
+      res.status(201).json({ message: 'Review added', product: updatedProduct });
     } else {
       res.status(404).json({ message: 'Product not found' });
     }
@@ -211,8 +211,9 @@ const deleteProductReview = async (req, res) => {
         ? product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length
         : 0;
 
-      await product.save();
-      res.json({ message: 'Review removed' });
+      // 🔥 FIX: Save and immediately return the newly updated product
+      const updatedProduct = await product.save();
+      res.json({ message: 'Review removed', product: updatedProduct });
     } else {
       res.status(404).json({ message: 'Product not found' });
     }
