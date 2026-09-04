@@ -176,7 +176,7 @@ const updateUserProfile = async (req, res) => {
     }
 };
 
-// 🔥 FIXED: Sync Cart and Wishlist to Database (atomic update, no more VersionError)
+// 7. Sync Cart and Wishlist to Database
 const syncUserData = async (req, res) => {
     try {
         const userId = req.user._id || req.user.userId || req.user.id;
@@ -194,7 +194,6 @@ const syncUserData = async (req, res) => {
             updateFields.wishlist = wishlist.map(item => item._id || item.id || item);
         }
 
-        // Atomic update — bypasses versioning, so concurrent syncs can't collide
         const user = await User.findByIdAndUpdate(
             userId,
             { $set: updateFields },
@@ -210,7 +209,7 @@ const syncUserData = async (req, res) => {
     }
 };
 
-// Fetch Cart and Wishlist from Database
+// 8. Fetch Cart and Wishlist from Database (WITH GHOST PRODUCT FIX)
 const getUserData = async (req, res) => {
     try {
         const userId = req.user._id || req.user.userId || req.user.id;
@@ -220,9 +219,20 @@ const getUserData = async (req, res) => {
 
         if (!user) return res.status(404).json({ message: 'User not found' });
 
+        // 🔥 AUTO-HEAL: Filter out deleted "Ghost" products (nulls)
+        const validCart = user.cart.filter(item => item && item.product != null);
+        const validWishlist = user.wishlist.filter(item => item != null);
+
+        // If ghost products were found, silently update the DB to clean the user's cart forever
+        if (validCart.length !== user.cart.length || validWishlist.length !== user.wishlist.length) {
+            user.cart = validCart;
+            user.wishlist = validWishlist;
+            await user.save();
+        }
+
         res.status(200).json({
-            cart: user.cart,
-            wishlist: user.wishlist
+            cart: validCart,
+            wishlist: validWishlist
         });
     } catch (error) {
         console.error("Fetch User Data Error:", error);
