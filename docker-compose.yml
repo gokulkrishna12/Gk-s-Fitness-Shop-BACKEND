@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # The Node.js Backend API
+  api:
+    build: .
+    container_name: gks_fitness_api
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=development
+      # Note: We use 'mongo' as the hostname instead of 127.0.0.1 here
+      - MONGO_URI=mongodb://mongo:27017/gks_fitness_shop
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASS=${EMAIL_PASS}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - SWAGGER_URL=http://localhost:5000
+      - CLOUDINARY_CLOUD_NAME=your_cloud_name
+      - CLOUDINARY_API_KEY=your_api_key
+      - CLOUDINARY_API_SECRET=your_api_secret
+    depends_on:
+      - mongo
+    networks:
+      - fitness_network
+
+  # The MongoDB Database
+  mongo:
+    image: mongo:latest
+    container_name: gks_fitness_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - fitness_network
+
+# Define a network so the containers can talk to each other
+networks:
+  fitness_network:
+    driver: bridge
+
+# Define a persistent volume for MongoDB data so it isn't lost on restart
+volumes:
+  mongo_data:
