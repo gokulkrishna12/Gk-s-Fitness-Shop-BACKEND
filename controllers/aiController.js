@@ -6,26 +6,26 @@ const getSmartRecommendation = async (req, res) => {
         const { query } = req.body;
         if (!query) return res.status(400).json({ message: "Search query is required." });
 
-        // 🔥 Filter out filler words so they don't mess up the regex search
-        const ignoreWords = ['what', 'which', 'have', 'price', 'tell', 'show', 'you', 'are'];
-        const words = query.toLowerCase().split(' ').filter(w => w.length > 2 && !ignoreWords.includes(w));
-        const regexPattern = words.join('|');
+        // 🔥 1. Fetch all in-stock names (Very fast, no DB regex crashes!)
+        const allProducts = await Product.find({ stock: { $gt: 0 } }).select('name price -_id');
 
-        // 🔥 FIX: Only search 'name'. Searching an ObjectId (category) with regex breaks Mongoose!
-        const inventoryQuery = words.length > 0 ? {
-            stock: { $gt: 0 },
-            name: { $regex: regexPattern, $options: 'i' }
-        } : { stock: { $gt: 0 } };
+        // 🔥 2. Strip weird symbols (like ?) so they don't break the search
+        const cleanQuery = query.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+        const words = cleanQuery.split(' ').filter(w => w.length > 2);
 
-        let inventory = await Product.find(inventoryQuery)
-            .select('name price attributes -_id')
-            .limit(5);
+        // 🔥 3. Filter using Pure JavaScript (100% Bulletproof)
+        let inventory = allProducts.filter(product => {
+            const pName = product.name.toLowerCase();
+            // If the product name contains ANY of the words the user typed, keep it!
+            return words.some(word => pName.includes(word));
+        });
 
-        // Fallback if absolutely no match is found
+        // 4. Fallback: If they just say "hi" or search fails, grab 3 random items
         if (inventory.length === 0) {
-            inventory = await Product.find({ stock: { $gt: 0 } })
-                .select('name price -_id')
-                .limit(3);
+            inventory = allProducts.slice(0, 3);
+        } else {
+            // Send max 4 items to AI to keep token costs extremely low
+            inventory = inventory.slice(0, 4);
         }
 
         const aiResponse = await generateRecommendation(query, inventory);
