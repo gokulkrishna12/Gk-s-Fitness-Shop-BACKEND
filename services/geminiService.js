@@ -16,18 +16,18 @@ RULES:
 
     try {
         const response = await ai.models.generateContent({
-            // 🔥 Locked to the only valid model for the new SDK
-            model: 'gemini-2.5-flash',
+            // 🔥 Back to the king: 3.6-flash!
+            model: 'gemini-3.6-flash',
             contents: prompt,
             config: {
-                maxOutputTokens: 60
+                temperature: 0.5
+                // 🔥 NO maxOutputTokens limit! Let it breathe!
             }
         });
         return response.text;
     } catch (error) {
         console.error('Gemini AI Error:', error);
-        // 🔥 This will print the REAL error for the 2.5 model if it fails!
-        return `API Error (2.5-flash): ${error.message}`;
+        return `API Error: ${error.message}`;
     }
 };
 
@@ -36,13 +36,13 @@ const compareProducts = async (productA, productB, userGoal) => {
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.6-flash',
             contents: prompt,
-            config: { maxOutputTokens: 60 }
+            config: { temperature: 0.5 }
         });
         return response.text;
     } catch (error) {
-        return `API Error (2.5-flash): ${error.message}`;
+        return `API Error: ${error.message}`;
     }
 };
 
