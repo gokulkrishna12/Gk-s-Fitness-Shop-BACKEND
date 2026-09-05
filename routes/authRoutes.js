@@ -7,6 +7,7 @@ const {
     loginUser,
     forgotPassword,
     resetPassword,
+    verifyOtp,
     updateUserProfile,
     syncUserData, // 🔥 Added Sync
     getUserData   // 🔥 Added Fetch
@@ -19,6 +20,7 @@ router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+router.post('/verify-otp', verifyOtp);
 router.put('/profile', protect, updateUserProfile);
 
 // 🔥 THE FIX: New Endpoints for Cross-Device Sync!

@@ -118,7 +118,25 @@ const forgotPassword = async (req, res) => {
     }
 };
 
-// 5. Verify OTP & Reset Password
+// 5. Verify OTP only (does NOT reset password, does NOT delete the OTP)
+const verifyOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ message: 'Please provide email and OTP' });
+        }
+
+        const otpRecord = await Otp.findOne({ email, otp });
+        if (!otpRecord) return res.status(400).json({ message: 'Invalid or expired OTP' });
+
+        res.status(200).json({ message: 'OTP verified successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// 6. Verify OTP & Reset Password
 const resetPassword = async (req, res) => {
     try {
         const { email, otp, newPassword } = req.body;
@@ -144,7 +162,7 @@ const resetPassword = async (req, res) => {
     }
 };
 
-// 6. Update User Profile
+// 7. Update User Profile
 const updateUserProfile = async (req, res) => {
     try {
         const userId = req.user._id || req.user.userId || req.user.id;
@@ -176,7 +194,7 @@ const updateUserProfile = async (req, res) => {
     }
 };
 
-// 7. Sync Cart and Wishlist to Database
+// 8. Sync Cart and Wishlist to Database
 const syncUserData = async (req, res) => {
     try {
         const userId = req.user._id || req.user.userId || req.user.id;
@@ -209,7 +227,7 @@ const syncUserData = async (req, res) => {
     }
 };
 
-// 8. Fetch Cart and Wishlist from Database (WITH GHOST PRODUCT FIX)
+// 9. Fetch Cart and Wishlist from Database (WITH GHOST PRODUCT FIX)
 const getUserData = async (req, res) => {
     try {
         const userId = req.user._id || req.user.userId || req.user.id;
@@ -219,7 +237,7 @@ const getUserData = async (req, res) => {
 
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // 🔥 AUTO-HEAL: Filter out deleted "Ghost" products (nulls)
+        // AUTO-HEAL: Filter out deleted "Ghost" products (nulls)
         const validCart = user.cart.filter(item => item && item.product != null);
         const validWishlist = user.wishlist.filter(item => item != null);
 
@@ -241,6 +259,6 @@ const getUserData = async (req, res) => {
 };
 
 module.exports = {
-    sendOtp, registerUser, loginUser, forgotPassword, resetPassword, updateUserProfile,
+    sendOtp, registerUser, loginUser, forgotPassword, verifyOtp, resetPassword, updateUserProfile,
     syncUserData, getUserData
 };
