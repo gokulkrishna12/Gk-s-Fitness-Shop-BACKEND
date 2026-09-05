@@ -1,5 +1,5 @@
 const Order = require('../models/Order');
-const Product = require('../models/Product'); // THE FIX: Need Product model to deduct stock!
+const Product = require('../models/Product');
 const razorpay = require('../config/razorpay');
 const crypto = require('crypto');
 
@@ -35,8 +35,8 @@ const verifyPaymentSignature = async (req, res) => {
 
         const body = razorpay_order_id + "|" + razorpay_payment_id;
 
-        // PASTE YOUR REAL RAZORPAY SECRET HERE
-        const MY_RAZORPAY_SECRET = process.env.RAZORPAY_KEY_SECRET || "YrsnUkIynkCQvfDq1Cc2RoI0";
+        // 🔥 SECURITY FIX: Only use the environment variable! Make sure this is in your EC2 .env file.
+        const MY_RAZORPAY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
         const expectedSignature = crypto
             .createHmac('sha256', MY_RAZORPAY_SECRET)
@@ -68,13 +68,15 @@ const verifyPaymentSignature = async (req, res) => {
 
         const createdOrder = await order.save();
 
-        // 🔥 THE FIX: Stock Deduction Logic!
+        // 🔥 THE FIX: Bulletproof Stock Deduction Logic!
         try {
             for (const item of orderItems) {
                 const productRecord = await Product.findById(item.product || item.id);
                 if (productRecord) {
+                    // 🔥 MATH FIX: Added "|| 0" to completely prevent NaN database corruption
+                    const currentStock = productRecord.countInStock !== undefined ? productRecord.countInStock : (productRecord.stock || 0);
+
                     // Reduce stock safely so it never drops below 0
-                    const currentStock = productRecord.countInStock !== undefined ? productRecord.countInStock : productRecord.stock;
                     const newStock = Math.max(0, currentStock - item.qty);
 
                     productRecord.countInStock = newStock;
