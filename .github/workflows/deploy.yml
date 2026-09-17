@@ -1,0 +1,34 @@
+name: Deploy Backend to AWS EC2
+
+on:
+  push:
+    branches:
+      - main # This triggers the workflow when you push to main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Deploy to EC2 using SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # 🔥 Load Node/NVM so the server knows what 'pm2' and 'npm' are
+          export NVM_DIR=~/.nvm
+          source ~/.nvm/nvm.sh || true
+
+          # 🔥 Navigate to your backend folder (CHANGE THIS IF YOUR FOLDER NAME IS DIFFERENT)
+          cd /home/ubuntu/Gk-s-Fitness-Shop-BACKEND
+          
+          # 🔥 Pull the latest code from GitHub
+          git pull origin main
+          
+          # 🔥 Install any new packages you might have added
+          npm install
+          
+          # 🔥 Restart the server
+          pm2 restart all
