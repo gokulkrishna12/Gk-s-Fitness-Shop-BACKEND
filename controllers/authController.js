@@ -21,7 +21,8 @@ const sendOtp = async (req, res) => {
             { email }, { otp, createdAt: Date.now() }, { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
         );
 
-        sendEmail(email, 'GK\'s Fitness Shop - Verification OTP', `Your registration OTP is ${otp}. Valid for 5 minutes.`);
+        // 🔥 FIX: Added 'await' so it waits for the email to physically send!
+        await sendEmail(email, 'GK\'s Fitness Shop - Verification OTP', `Your registration OTP is ${otp}. Valid for 5 minutes.`);
 
         res.status(200).json({ message: 'OTP sent to email successfully' });
     } catch (error) {
@@ -110,7 +111,8 @@ const forgotPassword = async (req, res) => {
             { email }, { otp, createdAt: Date.now() }, { upsert: true, returnDocument: 'after' }
         );
 
-        sendEmail(email, 'GK\'s Fitness Shop - Password Reset OTP', `Your password reset OTP is ${otp}. Valid for 5 minutes.`);
+        // 🔥 FIX: Added 'await' here too!
+        await sendEmail(email, 'GK\'s Fitness Shop - Password Reset OTP', `Your password reset OTP is ${otp}. Valid for 5 minutes.`);
 
         res.status(200).json({ message: 'Password reset OTP sent successfully' });
     } catch (error) {

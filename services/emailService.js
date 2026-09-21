@@ -1,9 +1,9 @@
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com', // 🔥 Direct host instead of 'service: gmail'
-    port: 465,              // 🔥 Force direct SSL (much faster than STARTTLS on port 587)
-    secure: true,           // 🔥 True for 465
+    host: 'smtp.gmail.com', 
+    port: 465,              
+    secure: true,           
     pool: true,
     auth: {
         user: process.env.EMAIL_USER,
@@ -24,6 +24,8 @@ const sendEmail = async (to, subject, text) => {
         console.log(`Email sent successfully to ${to}`);
     } catch (error) {
         console.error('Error sending email:', error);
+        // 🔥 FIX: We MUST throw the error so the controller knows it crashed!
+        throw new Error('Failed to send email. Check Gmail App Passwords.'); 
     }
 };
 
