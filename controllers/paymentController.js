@@ -70,19 +70,18 @@ const verifyPaymentSignature = async (req, res) => {
 
         // 🔥 THE FIX: Bulletproof Stock Deduction Logic!
         try {
-            for (const item of orderItems) {
-                const productRecord = await Product.findById(item.product || item.id);
-                if (productRecord) {
-                    // 🔥 MATH FIX: Added "|| 0" to completely prevent NaN database corruption
-                    const currentStock = productRecord.countInStock !== undefined ? productRecord.countInStock : (productRecord.stock || 0);
+            // Inside your Razorpay verify / order completion controller:
+            for (const item of order.orderItems) {
+                const product = await Product.findById(item.product || item.id || item._id);
+                if (product) {
+                    const currentStock = product.stock !== undefined ? product.stock : (product.countInStock || 0);
 
-                    // Reduce stock safely so it never drops below 0
-                    const newStock = Math.max(0, currentStock - item.qty);
+                    // Subtract ONLY the purchased quantity, avoiding negative stock
+                    const updatedStock = Math.max(0, currentStock - Number(item.qty || 1));
 
-                    productRecord.countInStock = newStock;
-                    productRecord.stock = newStock; // Keep both updated just in case
-
-                    await productRecord.save();
+                    product.stock = updatedStock;
+                    product.countInStock = updatedStock;
+                    await product.save();
                 }
             }
         } catch (stockError) {
