@@ -1,6 +1,5 @@
 require('dotenv').config();
 
-// 🔥 1. In V8, Sentry MUST be imported and initialized before Express!
 const Sentry = require('@sentry/node');
 Sentry.init({
     dsn: process.env.SENTRY_DSN,
@@ -18,14 +17,11 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const morgan = require('morgan');
+const passport = require('passport');
+require('./config/passport');
 
 const app = express();
 connectDB();
-
-if (process.env.NODE_ENV !== 'test') {
-    app.use(morgan('dev'));
-    app.use(mongoSanitize());
-}
 
 app.use(helmet());
 
@@ -34,7 +30,28 @@ const corsOptions = {
     credentials: true,
 };
 app.use(cors(corsOptions));
+
+// 🔥 1. Parse JSON payloads BEFORE sanitizing them
 app.use(express.json());
+app.use(passport.initialize());
+
+if (process.env.NODE_ENV !== 'test') {
+    app.use(morgan('dev'));
+
+    // 🔥 2. THE FIX: Redefine req.query as writable to bypass the Express 5 crash
+    app.use((req, res, next) => {
+        Object.defineProperty(req, 'query', {
+            value: { ...req.query },
+            writable: true,
+            configurable: true,
+            enumerable: true
+        });
+        next();
+    });
+
+    // 🔥 3. Execute sanitizer safely
+    app.use(mongoSanitize());
+}
 
 const skipRateLimit = (req, res) => process.env.NODE_ENV === 'test';
 
@@ -63,20 +80,16 @@ app.use('/api/categories', require('./routes/categoryRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 
-// Health check
 app.get('/', (req, res) => {
     res.send("GK's Fitness Shop API is securely live...");
 });
 
-// Sentry Testing Route
 app.get("/debug-sentry", function mainHandler(req, res) {
     throw new Error("My first intentional Sentry error!");
 });
 
-// 🔥 2. The NEW V8 Syntax for the Error Handler
 Sentry.setupExpressErrorHandler(app);
 
-// Global Error Handler
 app.use((err, req, res, next) => {
     if (process.env.NODE_ENV === 'test') {
         console.error("🚨 Express Error:", err.message);
