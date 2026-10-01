@@ -9,8 +9,9 @@ const {
     resetPassword,
     verifyOtp,
     updateUserProfile,
-    syncUserData, // 🔥 Added Sync
-    getUserData   // 🔥 Added Fetch
+    syncUserData,
+    getUserData,
+    savePushToken // 🔥 REPAIRED: Added the missing import!
 } = require('../controllers/authController');
 
 const { protect } = require('../middleware/authMiddleware');
@@ -23,8 +24,9 @@ router.post('/reset-password', resetPassword);
 router.post('/verify-otp', verifyOtp);
 router.put('/profile', protect, updateUserProfile);
 
-// 🔥 THE FIX: New Endpoints for Cross-Device Sync!
+// Endpoints for Cross-Device Sync & Notifications
 router.post('/sync', protect, syncUserData);
 router.get('/data', protect, getUserData);
+router.post('/push-token', protect, savePushToken);
 
 module.exports = router;

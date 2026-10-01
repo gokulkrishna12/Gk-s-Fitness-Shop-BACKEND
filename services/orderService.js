@@ -1,24 +1,21 @@
-const mongoose = require('mongoose'); // 🔥 Imported Mongoose for transactions
+const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const { sendPushNotification } = require('../utils/pushNotification'); // 🔥 Imported Utility
 
-// Helper: Centralized Admin Verification
 const checkIsAdmin = (user) => {
     return user.isAdmin || user.role === 'admin' || user.email === 'gokuldinesh32@gmail.com';
 };
 
-// Helper: Centralized Stock Restoration Logic (Now accepts a Transaction Session!)
 const restoreStock = async (order, session) => {
     if (order.paymentStatus !== 'Cancelled') {
         for (const item of order.orderItems) {
-            // 🔥 .session(session) ensures this query is part of the transaction
             const productRecord = await Product.findById(item.product || item.id).session(session);
             if (productRecord) {
                 const currentStock = productRecord.countInStock !== undefined ? productRecord.countInStock : (productRecord.stock || 0);
                 const newStock = currentStock + item.qty;
                 productRecord.countInStock = newStock;
                 productRecord.stock = newStock;
-                // 🔥 .save({ session }) ties the save to the transaction
                 await productRecord.save({ session });
             }
         }
@@ -30,24 +27,45 @@ const getAllOrders = async () => {
 };
 
 const updateOrderToDelivered = async (orderId) => {
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId).populate('user');
     if (!order) throw { status: 404, message: 'Order not found' };
 
     order.isDelivered = true;
     order.deliveredAt = Date.now();
     order.paymentStatus = 'Delivered';
 
+    // Trigger Notification
+    if (order.user && order.user.expoPushToken) {
+        await sendPushNotification(
+            order.user.expoPushToken,
+            "Order Delivered ✅",
+            "Your order has been delivered! Enjoy your gear.",
+            { orderId: order._id, status: 'Delivered' }
+        );
+    }
+
     return await order.save();
 };
 
 const updateOrderStatus = async (orderId, paymentStatus) => {
-    const order = await Order.findById(orderId);
+    // 🔥 REPAIRED: Must populate('user') to access the push token!
+    const order = await Order.findById(orderId).populate('user');
     if (!order) throw { status: 404, message: 'Order not found' };
 
     order.paymentStatus = paymentStatus;
     if (paymentStatus === 'Delivered') {
         order.isDelivered = true;
         order.deliveredAt = Date.now();
+    }
+
+    // 🔥 REPAIRED: Automatically trigger push notification on Shipped or Delivered
+    if ((paymentStatus === 'Shipped' || paymentStatus === 'Delivered') && order.user && order.user.expoPushToken) {
+        await sendPushNotification(
+            order.user.expoPushToken,
+            "Order Update 📦",
+            `Good news! Your order is now ${paymentStatus}.`,
+            { orderId: order._id, status: paymentStatus }
+        );
     }
 
     return await order.save();
@@ -72,9 +90,7 @@ const getOrderById = async (orderId, user) => {
     return order;
 };
 
-// 🔥 UPGRADED: User Cancel Order with ACID Transactions
 const cancelOrder = async (orderId, user, reason) => {
-    // 1. Start the transaction session
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -86,28 +102,23 @@ const cancelOrder = async (orderId, user, reason) => {
             throw { status: 401, message: 'Not authorized to cancel this order' };
         }
 
-        // 2. Pass the session into the stock restorer
         await restoreStock(order, session);
 
-        // 3. Update the order
         order.paymentStatus = 'Cancelled';
         order.cancelReason = reason || 'No reason provided';
         await order.save({ session });
 
-        // 4. If EVERYTHING succeeded, commit the transaction to the database
         await session.commitTransaction();
         session.endSession();
 
         return { message: 'Order cancelled successfully. Stock Restored safely.' };
     } catch (error) {
-        // 5. If ANYTHING failed, roll everything back instantly
         await session.abortTransaction();
         session.endSession();
         throw error;
     }
 };
 
-// 🔥 UPGRADED: Admin Cancel Order with ACID Transactions
 const adminCancelOrder = async (orderId, user) => {
     const session = await mongoose.startSession();
     session.startTransaction();
