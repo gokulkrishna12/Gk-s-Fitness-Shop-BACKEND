@@ -5,6 +5,7 @@ const connectDB = require('./config/db');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./config/swagger');
 const otpRoutes = require('./routes/otpRoutes');
+const Sentry = require('@sentry/node'); // 🔥 1. Import Sentry
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -12,9 +13,18 @@ const mongoSanitize = require('express-mongo-sanitize');
 const morgan = require('morgan');
 
 const app = express();
+
+// 🔥 2. Initialize Sentry (MUST be before any routes or middleware)
+Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    tracesSampleRate: 1.0, // Captures 100% of transactions for performance monitoring
+});
+
+// 🔥 3. The Sentry Request Handler creates a separate execution context
+app.use(Sentry.Handlers.requestHandler());
+
 connectDB();
 
-// 🔥 THE FIX: Skip Morgan and MongoSanitize during testing to prevent Supertest crashes!
 if (process.env.NODE_ENV !== 'test') {
     app.use(morgan('dev'));
     app.use(mongoSanitize());
@@ -61,14 +71,24 @@ app.get('/', (req, res) => {
     res.send("GK's Fitness Shop API is securely live...");
 });
 
+// 🔥 4. Sentry Testing Route (Trigger a fake crash to test the dashboard)
+app.get("/debug-sentry", function mainHandler(req, res) {
+    throw new Error("My first Sentry error!");
+});
+
+// 🔥 5. The Sentry Error Handler (MUST be right before your custom error handler)
+app.use(Sentry.Handlers.errorHandler());
+
 // Global Error Handler
 app.use((err, req, res, next) => {
     if (process.env.NODE_ENV === 'test') {
         console.error("🚨 Express Error:", err.message);
     }
+    // Sentry has already logged the error by this point, so we just return a safe JSON response to the user
     res.status(500).json({
         message: 'Internal Server Error',
-        error: err.message
+        error: err.message,
+        sentryEventId: res.sentry // Optionally return the Sentry ID to the user for support tickets
     });
 });
 
