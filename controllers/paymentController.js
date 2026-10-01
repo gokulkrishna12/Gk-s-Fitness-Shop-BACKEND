@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const razorpay = require('../config/razorpay');
 const crypto = require('crypto');
+const { sendOrderReceipt } = require('../services/emailService'); // 🔥 NEW: Import the receipt function
 
 // 1. Create a Razorpay Order
 const createRazorpayOrder = async (req, res) => {
@@ -97,6 +98,12 @@ const verifyPaymentSignature = async (req, res) => {
         // Commit transaction if payment verified and stock safely deducted
         await session.commitTransaction();
         session.endSession();
+
+        // 🔥 NEW: Fire the email in the background!
+        if (req.user && req.user.email) {
+            // Note: We do NOT 'await' this function so the HTTP response isn't delayed
+            sendOrderReceipt(req.user.email, req.user.name, createdOrder, razorpay_payment_id);
+        }
 
         res.status(200).json({ message: 'Payment verified successfully', order: createdOrder });
 
