@@ -5,7 +5,8 @@ const User = require('../models/User');
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "/api/auth/google/callback"
+    // 🔥 FIX: Stop Passport from guessing HTTP. Force it to use the exact HTTPS link from your .env!
+    callbackURL: process.env.GOOGLE_CALLBACK_URL
 },
     async (accessToken, refreshToken, profile, done) => {
         try {
@@ -13,15 +14,15 @@ passport.use(new GoogleStrategy({
             let user = await User.findOne({ email: profile.emails[0].value });
 
             if (user) {
-                // User exists (even if they originally signed up with email/password)
+                // User exists
                 return done(null, user);
             }
 
-            // 2. If not, auto-register them using their Google details
+            // 2. Auto-register them using their Google details
             user = await User.create({
                 name: profile.displayName,
                 email: profile.emails[0].value,
-                // Generate a secure, random dummy password since they log in via Google
+                // Generate a secure, random dummy password
                 password: Math.random().toString(36).slice(-8) + Date.now(),
                 isVerified: true,
                 role: 'customer'
