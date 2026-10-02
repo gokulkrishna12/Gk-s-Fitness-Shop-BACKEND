@@ -38,18 +38,31 @@ router.get('/google', passport.authenticate('google', {
 }));
 
 // 🔥 NEW: Callback route Google hits after the user approves login
+// Inside your Google callback route:
 router.get('/google/callback', passport.authenticate('google', { session: false, failureRedirect: '/login' }), (req, res) => {
 
-    // Generate your standard JWT for the authenticated user
+    // 🔥 FIX: Pull the live role directly from the database user object (req.user)
     const token = jwt.sign(
-        { userId: req.user._id, role: req.user.role },
+        {
+            userId: req.user._id,
+            role: req.user.role,   // <-- Pulls whatever role is currently set in MongoDB Atlas!
+            email: req.user.email,
+            name: req.user.name
+        },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
     );
 
-    // Redirect back to your Vite frontend with the secure token attached in the URL
+    // Pass both the token AND the updated user object to the frontend
+    const userData = encodeURIComponent(JSON.stringify({
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role // <-- Live role sent to frontend!
+    }));
+
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/oauth-success?token=${token}`);
+    res.redirect(`${frontendUrl}/oauth-success?token=${token}&user=${userData}`);
 });
 
 module.exports = router;
