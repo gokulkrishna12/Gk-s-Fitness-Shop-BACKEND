@@ -21,6 +21,10 @@ const passport = require('passport');
 require('./config/passport');
 
 const app = express();
+
+// 🔥 CRITICAL FIX: Tells Express to trust the CloudFront proxy headers so rate-limiting doesn't crash
+app.set('trust proxy', 1);
+
 connectDB();
 
 app.use(helmet());
