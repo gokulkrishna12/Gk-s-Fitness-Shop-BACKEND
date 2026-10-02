@@ -1,7 +1,8 @@
 const Product = require('../models/Product');
-const cloudinary = require('cloudinary').v2; // Require it to use our global config
+const User = require('../models/User'); // 🔥 NEW: Required for fetching push tokens
+const { sendPushNotification } = require('../utils/pushNotification'); // 🔥 NEW: Import Expo utility
+const cloudinary = require('cloudinary').v2;
 
-// 🔥 THE SPEED FIX: A magic function that blasts all images to Cloudinary simultaneously!
 const uploadImagesInParallel = async (files) => {
   if (!files || files.length === 0) return [];
 
@@ -18,18 +19,13 @@ const uploadImagesInParallel = async (files) => {
           else resolve(result.secure_url);
         }
       );
-      // Pipe the fast RAM buffer directly to Cloudinary
       stream.end(file.buffer);
     });
   });
 
-  // Promise.all runs all uploads at the exact same time!
   return await Promise.all(uploadPromises);
 };
 
-
-// @desc    Fetch all products
-// @route   GET /api/products
 const getProducts = async (req, res) => {
   try {
     const keyword = req.query.keyword
@@ -43,8 +39,6 @@ const getProducts = async (req, res) => {
   }
 };
 
-// @desc    Fetch single product
-// @route   GET /api/products/:id
 const getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -59,14 +53,10 @@ const getProductById = async (req, res) => {
   }
 };
 
-// @desc    Create a product
-// @route   POST /api/products
-// @access  Private/Admin
 const createProduct = async (req, res) => {
   try {
     const { name, price, description, category, countInStock, stock } = req.body;
 
-    // 🔥 PARALLEL UPLOAD ACTIVATED
     let uploadedImageUrls = [];
     if (req.files && req.files.length > 0) {
       uploadedImageUrls = await uploadImagesInParallel(req.files);
@@ -81,7 +71,7 @@ const createProduct = async (req, res) => {
       price,
       user: req.user._id,
       images: uploadedImageUrls,
-      image: uploadedImageUrls[0], // fallback single image field
+      image: uploadedImageUrls[0],
       category,
       countInStock: Number(finalStock),
       stock: Number(finalStock),
@@ -96,9 +86,6 @@ const createProduct = async (req, res) => {
   }
 };
 
-// @desc    Update a product
-// @route   PUT /api/products/:id
-// @access  Private/Admin
 const updateProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -115,7 +102,6 @@ const updateProduct = async (req, res) => {
         product.countInStock = Number(newStock);
       }
 
-      // 🔥 PARALLEL UPLOAD FOR UPDATES
       if (req.files && req.files.length > 0) {
         const newImages = await uploadImagesInParallel(req.files);
         product.images = newImages;
@@ -133,9 +119,6 @@ const updateProduct = async (req, res) => {
   }
 };
 
-// @desc    Create product review
-// @route   POST /api/products/:id/reviews
-// @access  Private
 const createProductReview = async (req, res) => {
   try {
     const { rating, comment } = req.body;
@@ -170,7 +153,6 @@ const createProductReview = async (req, res) => {
         product.reviews.reduce((acc, item) => item.rating + acc, 0) /
         product.reviews.length;
 
-      // 🔥 FIX: Save and immediately return the newly updated product
       const updatedProduct = await product.save();
       res.status(201).json({ message: 'Review added', product: updatedProduct });
     } else {
@@ -182,9 +164,6 @@ const createProductReview = async (req, res) => {
   }
 };
 
-// @desc    Delete a review
-// @route   DELETE /api/products/:id/reviews/:reviewId
-// @access  Private
 const deleteProductReview = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -211,7 +190,6 @@ const deleteProductReview = async (req, res) => {
         ? product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length
         : 0;
 
-      // 🔥 FIX: Save and immediately return the newly updated product
       const updatedProduct = await product.save();
       res.json({ message: 'Review removed', product: updatedProduct });
     } else {
@@ -223,9 +201,6 @@ const deleteProductReview = async (req, res) => {
   }
 };
 
-// @desc    Delete a product
-// @route   DELETE /api/products/:id
-// @access  Private/Admin
 const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -241,6 +216,29 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+// 🔥 NEW: Admin Route to Broadcast Deals to ALL Users
+const broadcastDeal = async (req, res) => {
+  try {
+    const { title, message } = req.body;
+
+    const users = await User.find({ expoPushToken: { $ne: null, $exists: true } });
+    let sentCount = 0;
+
+    for (let user of users) {
+      try {
+        await sendPushNotification(user.expoPushToken, title, message, { screen: 'Catalog' });
+        sentCount++;
+      } catch (err) {
+        console.error(`Failed to send to user ${user.email}`);
+      }
+    }
+
+    res.status(200).json({ message: `🔥 Deal drop successfully broadcasted to ${sentCount} athletes!` });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error broadcasting notification', error: error.message });
+  }
+};
+
 module.exports = {
   getProducts,
   getProductById,
@@ -248,5 +246,6 @@ module.exports = {
   updateProduct,
   createProductReview,
   deleteProductReview,
-  deleteProduct
+  deleteProduct,
+  broadcastDeal // 🔥 NEW: Don't forget to export the new function
 };

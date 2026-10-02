@@ -1,9 +1,11 @@
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const User = require('../models/User'); // 🔥 NEW: Needed to fetch the push token
 const razorpay = require('../config/razorpay');
 const crypto = require('crypto');
-const { sendOrderReceipt } = require('../services/emailService'); // 🔥 NEW: Import the receipt function
+const { sendOrderReceipt } = require('../services/emailService');
+const { sendPushNotification } = require('../utils/pushNotification'); // 🔥 NEW: Import Expo utility
 
 // 1. Create a Razorpay Order
 const createRazorpayOrder = async (req, res) => {
@@ -38,7 +40,6 @@ const verifyPaymentSignature = async (req, res) => {
     try {
         const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderItems, shippingAddress, totalAmount } = req.body;
 
-        // 🔥 IDEMPOTENCY FIX: Prevent duplicate processing if the frontend calls this twice
         const existingOrder = await Order.findOne({ razorpayPaymentId: razorpay_payment_id });
         if (existingOrder) {
             await session.abortTransaction();
@@ -68,7 +69,6 @@ const verifyPaymentSignature = async (req, res) => {
             return res.status(401).json({ message: 'User authentication failed during checkout.' });
         }
 
-        // Create order in MongoDB tied to the Transaction Session
         const order = new Order({
             user: athleteId,
             orderItems,
@@ -82,7 +82,6 @@ const verifyPaymentSignature = async (req, res) => {
 
         const createdOrder = await order.save({ session });
 
-        // 🔥 THE FIX: Bulletproof Stock Deduction via Transaction
         for (const item of order.orderItems) {
             const product = await Product.findById(item.product || item.id || item._id).session(session);
             if (product) {
@@ -95,14 +94,23 @@ const verifyPaymentSignature = async (req, res) => {
             }
         }
 
-        // Commit transaction if payment verified and stock safely deducted
         await session.commitTransaction();
         session.endSession();
 
-        // 🔥 NEW: Fire the email in the background!
         if (req.user && req.user.email) {
-            // Note: We do NOT 'await' this function so the HTTP response isn't delayed
             sendOrderReceipt(req.user.email, req.user.name, createdOrder, razorpay_payment_id);
+        }
+
+        // 🔥 FIRE PUSH NOTIFICATION TO THE USER FOR SUCCESSFUL PAYMENT
+        try {
+            const user = await User.findById(athleteId);
+            if (user && user.expoPushToken) {
+                const title = "✅ Payment Successful!";
+                const body = `We received your payment of ₹${totalAmount}. Your gear is getting ready to ship!`;
+                await sendPushNotification(user.expoPushToken, title, body, { orderId: createdOrder._id });
+            }
+        } catch (pushErr) {
+            console.error("Failed to send payment push notification:", pushErr);
         }
 
         res.status(200).json({ message: 'Payment verified successfully', order: createdOrder });
@@ -119,12 +127,8 @@ const verifyPaymentSignature = async (req, res) => {
 const razorpayWebhook = async (req, res) => {
     try {
         const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-
-        // Note: For strict signature verification, express needs a raw body parser, 
-        // but since we are hardening, we will handle the logic gracefully here.
         const signature = req.headers['x-razorpay-signature'];
 
-        // If no secret is configured yet in .env, skip verification temporarily to prevent crashes
         if (!webhookSecret) {
             console.warn("⚠️ RAZORPAY_WEBHOOK_SECRET is missing from .env");
             return res.status(200).send('OK');
@@ -145,7 +149,6 @@ const razorpayWebhook = async (req, res) => {
                 existingOrder.razorpayPaymentId = paymentEntity.id;
                 await existingOrder.save();
             } else if (!existingOrder) {
-                // 🔥 GHOST PAYMENT CAUGHT: User paid, but their browser crashed before completing the order!
                 console.error(`🚨 CRITICAL: Ghost Payment caught! Money received for Razorpay Order ${razorpayOrderId}, but order Items were not saved in DB. Amount: ₹${paymentEntity.amount / 100}`);
             }
         } else if (event === 'payment.failed') {

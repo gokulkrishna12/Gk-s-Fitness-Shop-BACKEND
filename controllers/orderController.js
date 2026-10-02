@@ -1,4 +1,6 @@
 const orderService = require('../services/orderService');
+const User = require('../models/User'); // Needed to fetch the user's push token
+const { sendPushNotification } = require('../utils/pushNotification'); // Ensure this path matches your folder structure!
 
 const getAllOrders = async (req, res) => {
     try {
@@ -21,6 +23,19 @@ const updateOrderToDelivered = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
     try {
         const updatedOrder = await orderService.updateOrderStatus(req.params.id, req.body.paymentStatus);
+
+        // 🔥 FIRE PUSH NOTIFICATION TO THE USER
+        try {
+            const user = await User.findById(updatedOrder.user);
+            if (user && user.expoPushToken) {
+                const title = "📦 Order Status Update";
+                const body = `Your order #${updatedOrder._id.toString().slice(-6)} is now: ${req.body.paymentStatus}`;
+                await sendPushNotification(user.expoPushToken, title, body, { orderId: updatedOrder._id });
+            }
+        } catch (pushErr) {
+            console.error("Failed to send push notification:", pushErr);
+        }
+
         res.status(200).json(updatedOrder);
     } catch (error) {
         res.status(error.status || 500).json({ message: error.message || 'Server error', error: error.message });
@@ -59,6 +74,19 @@ const cancelOrder = async (req, res) => {
 const adminCancelOrder = async (req, res) => {
     try {
         const result = await orderService.adminCancelOrder(req.params.id, req.user);
+
+        // 🔥 FIRE PUSH NOTIFICATION TO THE USER
+        try {
+            const user = await User.findById(result.user);
+            if (user && user.expoPushToken) {
+                const title = "❌ Order Cancelled";
+                const body = `Your order #${result._id.toString().slice(-6)} was unfortunately cancelled by the Admin.`;
+                await sendPushNotification(user.expoPushToken, title, body, { orderId: result._id });
+            }
+        } catch (pushErr) {
+            console.error("Failed to send push notification:", pushErr);
+        }
+
         res.status(200).json(result);
     } catch (error) {
         res.status(error.status || 500).json({ message: error.message || 'Server Error' });

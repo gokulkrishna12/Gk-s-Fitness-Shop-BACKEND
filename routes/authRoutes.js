@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-
-const passport = require('passport'); // 🔥 NEW: Import Passport
-const jwt = require('jsonwebtoken');  // 🔥 NEW: Import JWT for stateless token generation
+const passport = require('passport');
+const jwt = require('jsonwebtoken');
 
 const {
     sendOtp,
@@ -32,20 +31,21 @@ router.post('/sync', protect, syncUserData);
 router.get('/data', protect, getUserData);
 router.post('/push-token', protect, savePushToken);
 
-// 🔥 NEW: Route to trigger the Google Login popup
-router.get('/google', passport.authenticate('google', {
-    scope: ['profile', 'email']
-}));
+// 🔥 FIX 1: Capture the mobile deep link and pass it to Google via 'state'
+router.get('/google', (req, res, next) => {
+    const redirectUri = req.query.redirect_uri || '';
+    passport.authenticate('google', {
+        scope: ['profile', 'email'],
+        state: redirectUri // Passes the mobile URL through the OAuth flow
+    })(req, res, next);
+});
 
-// 🔥 NEW: Callback route Google hits after the user approves login
-// Inside your Google callback route:
+// 🔥 FIX 2: Dynamic Redirect back to Web OR Mobile App
 router.get('/google/callback', passport.authenticate('google', { session: false, failureRedirect: '/login' }), (req, res) => {
-
-    // 🔥 FIX: Pull the live role directly from the database user object (req.user)
     const token = jwt.sign(
         {
             userId: req.user._id,
-            role: req.user.role,   // <-- Pulls whatever role is currently set in MongoDB Atlas!
+            role: req.user.role,
             email: req.user.email,
             name: req.user.name
         },
@@ -53,16 +53,24 @@ router.get('/google/callback', passport.authenticate('google', { session: false,
         { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
     );
 
-    // Pass both the token AND the updated user object to the frontend
     const userData = encodeURIComponent(JSON.stringify({
         _id: req.user._id,
         name: req.user.name,
         email: req.user.email,
-        role: req.user.role // <-- Live role sent to frontend!
+        role: req.user.role
     }));
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/oauth-success?token=${token}&user=${userData}`);
+    // Read the deep link we passed earlier
+    const mobileRedirect = req.query.state;
+
+    if (mobileRedirect) {
+        // If request came from mobile, bounce them back into the app!
+        res.redirect(`${mobileRedirect}?token=${token}&user=${userData}`);
+    } else {
+        // If request came from web, bounce them back to the React Vite frontend
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        res.redirect(`${frontendUrl}/oauth-success?token=${token}&user=${userData}`);
+    }
 });
 
 module.exports = router;
