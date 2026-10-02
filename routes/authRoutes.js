@@ -34,8 +34,7 @@ router.post('/push-token', protect, savePushToken);
 
 // 🔥 NEW: Route to trigger the Google Login popup
 router.get('/google', passport.authenticate('google', {
-    scope: ['profile', 'email'],
-    session: false // Critical: Tells Passport we are using stateless JWTs, not cookies
+    scope: ['profile', 'email']
 }));
 
 // 🔥 NEW: Callback route Google hits after the user approves login
