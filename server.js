@@ -1,11 +1,5 @@
 require('dotenv').config();
 
-const Sentry = require('@sentry/node');
-Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    tracesSampleRate: 1.0,
-});
-
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
@@ -22,7 +16,17 @@ require('./config/passport');
 
 const app = express();
 
-// 🔥 CRITICAL FIX: Tells Express to trust the CloudFront proxy headers so rate-limiting doesn't crash
+// 🔥 FIX: Only initialize Sentry if we are NOT running Jest tests
+let Sentry;
+if (process.env.NODE_ENV !== 'test') {
+    Sentry = require('@sentry/node');
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        tracesSampleRate: 1.0,
+    });
+}
+
+// CRITICAL FIX: Tells Express to trust the CloudFront proxy headers
 app.set('trust proxy', 1);
 
 connectDB();
@@ -35,14 +39,12 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// 🔥 1. Parse JSON payloads BEFORE sanitizing them
 app.use(express.json());
 app.use(passport.initialize());
 
 if (process.env.NODE_ENV !== 'test') {
     app.use(morgan('dev'));
 
-    // 🔥 2. THE FIX: Redefine req.query as writable to bypass the Express 5 crash
     app.use((req, res, next) => {
         Object.defineProperty(req, 'query', {
             value: { ...req.query },
@@ -53,7 +55,6 @@ if (process.env.NODE_ENV !== 'test') {
         next();
     });
 
-    // 🔥 3. Execute sanitizer safely
     app.use(mongoSanitize());
 }
 
@@ -92,7 +93,10 @@ app.get("/debug-sentry", function mainHandler(req, res) {
     throw new Error("My first intentional Sentry error!");
 });
 
-Sentry.setupExpressErrorHandler(app);
+// 🔥 FIX: Only setup Sentry error handler in non-test environments
+if (process.env.NODE_ENV !== 'test' && Sentry) {
+    Sentry.setupExpressErrorHandler(app);
+}
 
 app.use((err, req, res, next) => {
     if (process.env.NODE_ENV === 'test') {

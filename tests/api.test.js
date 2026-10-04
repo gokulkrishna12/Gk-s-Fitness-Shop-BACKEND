@@ -1,3 +1,19 @@
+// 1. Intercept and mock Expo to bypass the ESM crash and prevent live notifications
+jest.mock('expo-server-sdk', () => {
+    return {
+        Expo: jest.fn().mockImplementation(() => ({
+            sendPushNotificationsAsync: jest.fn().mockResolvedValue([]),
+            chunkPushNotifications: jest.fn((messages) => [messages]),
+        }))
+    };
+});
+
+// 2. Intercept and mock Sentry to silence the diagnostics warning
+jest.mock('@sentry/node', () => ({
+    init: jest.fn(),
+    setupExpressErrorHandler: jest.fn()
+}));
+
 const request = require('supertest');
 const mongoose = require('mongoose');
 const app = require('../server');
