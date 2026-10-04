@@ -1,16 +1,22 @@
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
-const User = require('../models/User'); // 🔥 NEW: Needed to fetch the push token
+const User = require('../models/User');
 const razorpay = require('../config/razorpay');
 const crypto = require('crypto');
 const { sendOrderReceipt } = require('../services/emailService');
-const { sendPushNotification } = require('../utils/pushNotification'); // 🔥 NEW: Import Expo utility
+const { sendPushNotification } = require('../utils/pushNotification');
 
-// 1. Create a Razorpay Order
+// 1. Create Razorpay Order AND Save Pending Order in DB
 const createRazorpayOrder = async (req, res) => {
     try {
-        const { totalAmount } = req.body;
+        // 🔥 FIX: We now collect cart details upfront to prevent data loss!
+        const { totalAmount, orderItems, shippingAddress } = req.body;
+        const athleteId = req.user._id || req.user.userId || req.user.id;
+
+        if (!orderItems || orderItems.length === 0) {
+            return res.status(400).json({ message: 'No order items provided' });
+        }
 
         const options = {
             amount: Math.round(totalAmount * 100),
@@ -20,10 +26,23 @@ const createRazorpayOrder = async (req, res) => {
 
         const razorpayOrder = await razorpay.orders.create(options);
 
+        // 🔥 FIX: Lock in the order as Pending before the customer even pays
+        const order = new Order({
+            user: athleteId,
+            orderItems,
+            shippingAddress,
+            totalAmount,
+            paymentStatus: 'Pending',
+            razorpayOrderId: razorpayOrder.id,
+        });
+
+        await order.save();
+
         res.status(201).json({
             razorpayOrderId: razorpayOrder.id,
             amount: razorpayOrder.amount,
-            currency: razorpayOrder.currency
+            currency: razorpayOrder.currency,
+            dbOrderId: order._id // Send DB ID back to frontend just in case
         });
 
     } catch (error) {
@@ -32,20 +51,13 @@ const createRazorpayOrder = async (req, res) => {
     }
 };
 
-// 2. Verify Payment Signature, Save Order, and Deduct Stock (ACID + Idempotent)
+// 2. Verify Payment Signature, UPDATE Order, and Deduct Stock
 const verifyPaymentSignature = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderItems, shippingAddress, totalAmount } = req.body;
-
-        const existingOrder = await Order.findOne({ razorpayPaymentId: razorpay_payment_id });
-        if (existingOrder) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(200).json({ message: 'Payment already verified', order: existingOrder });
-        }
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
         const body = razorpay_order_id + "|" + razorpay_payment_id;
         const MY_RAZORPAY_SECRET = process.env.RAZORPAY_KEY_SECRET;
@@ -62,26 +74,29 @@ const verifyPaymentSignature = async (req, res) => {
             return res.status(400).json({ message: 'Invalid payment signature' });
         }
 
-        const athleteId = req.user._id || req.user.userId || req.user.id;
-        if (!athleteId) {
+        // 🔥 FIX: Find the existing Pending order instead of creating a new one
+        const order = await Order.findOne({ razorpayOrderId: razorpay_order_id }).session(session);
+
+        if (!order) {
             await session.abortTransaction();
             session.endSession();
-            return res.status(401).json({ message: 'User authentication failed during checkout.' });
+            return res.status(404).json({ message: 'Order not found in database' });
         }
 
-        const order = new Order({
-            user: athleteId,
-            orderItems,
-            shippingAddress,
-            totalAmount,
-            paymentStatus: 'Completed',
-            razorpayOrderId: razorpay_order_id,
-            razorpayPaymentId: razorpay_payment_id,
-            razorpaySignature: razorpay_signature
-        });
+        if (order.paymentStatus === 'Completed') {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(200).json({ message: 'Payment already verified', order });
+        }
 
-        const createdOrder = await order.save({ session });
+        // Update status to Completed
+        order.paymentStatus = 'Completed';
+        order.razorpayPaymentId = razorpay_payment_id;
+        order.razorpaySignature = razorpay_signature;
 
+        await order.save({ session });
+
+        // Deduct stock safely
         for (const item of order.orderItems) {
             const product = await Product.findById(item.product || item.id || item._id).session(session);
             if (product) {
@@ -98,22 +113,21 @@ const verifyPaymentSignature = async (req, res) => {
         session.endSession();
 
         if (req.user && req.user.email) {
-            sendOrderReceipt(req.user.email, req.user.name, createdOrder, razorpay_payment_id);
+            sendOrderReceipt(req.user.email, req.user.name, order, razorpay_payment_id);
         }
 
-        // 🔥 FIRE PUSH NOTIFICATION TO THE USER FOR SUCCESSFUL PAYMENT
         try {
-            const user = await User.findById(athleteId);
+            const user = await User.findById(order.user);
             if (user && user.expoPushToken) {
                 const title = "✅ Payment Successful!";
-                const body = `We received your payment of ₹${totalAmount}. Your gear is getting ready to ship!`;
-                await sendPushNotification(user.expoPushToken, title, body, { orderId: createdOrder._id });
+                const body = `We received your payment of ₹${order.totalAmount}. Your gear is getting ready to ship!`;
+                await sendPushNotification(user.expoPushToken, title, body, { orderId: order._id });
             }
         } catch (pushErr) {
             console.error("Failed to send payment push notification:", pushErr);
         }
 
-        res.status(200).json({ message: 'Payment verified successfully', order: createdOrder });
+        res.status(200).json({ message: 'Payment verified successfully', order });
 
     } catch (error) {
         await session.abortTransaction();
@@ -123,20 +137,16 @@ const verifyPaymentSignature = async (req, res) => {
     }
 };
 
-// 3. Webhook Endpoint to catch background payment events directly from Razorpay
+// 3. Robust Webhook Endpoint
 const razorpayWebhook = async (req, res) => {
     try {
         const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
         const signature = req.headers['x-razorpay-signature'];
 
-        if (!webhookSecret) {
-            console.warn("⚠️ RAZORPAY_WEBHOOK_SECRET is missing from .env");
-            return res.status(200).send('OK');
-        }
+        if (!webhookSecret) return res.status(200).send('OK');
 
         const event = req.body.event;
         const paymentEntity = req.body.payload?.payment?.entity;
-
         if (!paymentEntity) return res.status(200).send('OK');
 
         const razorpayOrderId = paymentEntity.order_id;
@@ -145,11 +155,11 @@ const razorpayWebhook = async (req, res) => {
             const existingOrder = await Order.findOne({ razorpayOrderId: razorpayOrderId });
 
             if (existingOrder && existingOrder.paymentStatus !== 'Completed') {
+                // 🔥 FIX: The webhook now acts as a failsafe! If the frontend crashes, the webhook secures the order.
                 existingOrder.paymentStatus = 'Completed';
                 existingOrder.razorpayPaymentId = paymentEntity.id;
                 await existingOrder.save();
-            } else if (!existingOrder) {
-                console.error(`🚨 CRITICAL: Ghost Payment caught! Money received for Razorpay Order ${razorpayOrderId}, but order Items were not saved in DB. Amount: ₹${paymentEntity.amount / 100}`);
+                console.log(`✅ Webhook Failsafe: Successfully finalized Order ${existingOrder._id}`);
             }
         } else if (event === 'payment.failed') {
             const existingOrder = await Order.findOne({ razorpayOrderId: razorpayOrderId });
