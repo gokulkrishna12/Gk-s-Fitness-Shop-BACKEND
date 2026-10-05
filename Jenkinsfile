@@ -7,16 +7,22 @@ pipeline {
     }
 
    environment {
+        // Defines the Docker image tag based on the Jenkins build number
         IMAGE_NAME = "gks-fitness-backend"
         IMAGE_TAG = "v1.${env.BUILD_ID}"
         
+        // Securely injected Database URL
+        MONGO_URI = credentials('MONGO_DB_CREDENTIAL')
+
+        // The Ultimate Dummy Variable Block to bypass all 3rd-party startup checks
         GOOGLE_CLIENT_ID = "ci_dummy_client_id"
         GOOGLE_CLIENT_SECRET = "ci_dummy_secret"
         GOOGLE_CALLBACK_URL = "http://localhost:5000/auth/google/callback"
         GEMINI_API_KEY = "ci_dummy_gemini_key"
-        
-        // Jenkins dynamically injects the real URL at runtime without exposing it in Git
-        MONGO_URI = credentials('MONGO_DB_CREDENTIAL')
+        RAZORPAY_KEY_ID = "ci_dummy_razorpay_key_id"
+        RAZORPAY_KEY_SECRET = "ci_dummy_razorpay_secret"
+        JWT_SECRET = "ci_dummy_jwt_secret"
+        PORT = "5000"
     }
     stages {
         stage('Checkout Code') {
