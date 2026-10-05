@@ -7,14 +7,16 @@ pipeline {
     }
 
    environment {
-        // Defines the Docker image tag based on the Jenkins build number
         IMAGE_NAME = "gks-fitness-backend"
         IMAGE_TAG = "v1.${env.BUILD_ID}"
         
-        // CI/CD Placeholder variables to bypass Passport.js startup crash
         GOOGLE_CLIENT_ID = "ci_dummy_client_id"
         GOOGLE_CLIENT_SECRET = "ci_dummy_secret"
         GOOGLE_CALLBACK_URL = "http://localhost:5000/auth/google/callback"
+        GEMINI_API_KEY = "ci_dummy_gemini_key"
+        
+        // Jenkins dynamically injects the real URL at runtime without exposing it in Git
+        MONGO_URI = credentials('MONGO_DB_CREDENTIAL')
     }
     stages {
         stage('Checkout Code') {
