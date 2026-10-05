@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    // This tells Jenkins to inject the Node.js environment we just configured
+    tools {
+        nodejs 'Node20'
+    }
+
     environment {
         // Defines the Docker image tag based on the Jenkins build number
         IMAGE_NAME = "gks-fitness-backend"
