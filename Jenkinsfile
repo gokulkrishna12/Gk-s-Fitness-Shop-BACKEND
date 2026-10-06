@@ -47,10 +47,17 @@ pipeline {
                 sh "docker exec minikube curl -sL https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl -o /kubectl"
                 sh "docker exec minikube chmod +x /kubectl"
                 
-                // Dynamically grabs the container IP to completely bypass DNS failures
-                sh 'cat k8s-deployment.yaml | docker exec -i minikube sh -c "/kubectl --kubeconfig=/etc/kubernetes/admin.conf --server=https://$(hostname -i):8443 --insecure-skip-tls-verify=true apply -f -"'
+                // Create a bulletproof deployment script that cuts out the extra IP addresses
+                sh """
+                    echo 'IP=\$(hostname -i | cut -d" " -f1)' > deploy.sh
+                    echo '/kubectl --kubeconfig=/etc/kubernetes/admin.conf --server=https://\$IP:8443 --insecure-skip-tls-verify=true apply -f /k8s-deployment.yaml' >> deploy.sh
+                    echo '/kubectl --kubeconfig=/etc/kubernetes/admin.conf --server=https://\$IP:8443 --insecure-skip-tls-verify=true set image deployment/gks-backend-deployment api=${IMAGE_NAME}:latest' >> deploy.sh
+                """
                 
-                sh 'docker exec minikube sh -c "/kubectl --kubeconfig=/etc/kubernetes/admin.conf --server=https://$(hostname -i):8443 --insecure-skip-tls-verify=true set image deployment/gks-backend-deployment api=gks-fitness-backend:latest"'
+                // Copy the files directly into the container and execute safely
+                sh "docker cp k8s-deployment.yaml minikube:/k8s-deployment.yaml"
+                sh "docker cp deploy.sh minikube:/deploy.sh"
+                sh "docker exec minikube sh /deploy.sh"
                 
                 echo '🚀 Deployed to Kubernetes successfully!'
             }
