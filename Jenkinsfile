@@ -50,14 +50,17 @@ pipeline {
                 echo '✅ Docker image built securely'
             }
         }
-
-        stage('Deploy to Kubernetes') {
+         stage('Deploy to Kubernetes') {
             steps {
-                // Bypass the network completely and apply the YAML directly inside the Minikube container
-                sh 'cat k8s-deployment.yaml | docker exec -i minikube kubectl apply -f -'
+                // 1. Download kubectl directly into the Minikube container's root folder
+                sh "docker exec minikube curl -sL https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl -o /kubectl"
+                sh "docker exec minikube chmod +x /kubectl"
                 
-                // Force Kubernetes to pull the brand new latest image we just built
-                sh "docker exec -i minikube kubectl set image deployment/gks-backend-deployment api=${IMAGE_NAME}:latest"
+                // 2. Pipe the deployment file and execute using the cluster's internal master key
+                sh "cat k8s-deployment.yaml | docker exec -i minikube /kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f -"
+                
+                // 3. Force Kubernetes to pull the brand new latest image we just built
+                sh "docker exec minikube /kubectl --kubeconfig=/etc/kubernetes/admin.conf set image deployment/gks-backend-deployment api=${IMAGE_NAME}:latest"
                 
                 echo '🚀 Deployed to Kubernetes successfully!'
             }
