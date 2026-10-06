@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// 🔥 Added fallback string here so Jenkins doesn't crash during testing
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'ci_dummy_gemini_key' });
 
 const generateRecommendation = async (userPrompt, availableProducts) => {
     const prompt = `
