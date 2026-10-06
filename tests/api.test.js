@@ -57,6 +57,37 @@ describe('GK Fitness Shop API - Integration Tests', () => {
             expect(Array.isArray(response.body)).toBeTruthy();
         });
     });
+
+    // 🔥 SPRINT 1 NEW TICKET: Payment Integration Tests
+    describe('POST /api/payments/checkout (Razorpay Order Generation)', () => {
+        it('should reject checkout if order items are missing', async () => {
+            // Attempting to checkout without a cart
+            const response = await request(app)
+                .post('/api/payments/checkout')
+                .send({
+                    totalAmount: 500,
+                    orderItems: [] // Empty cart to trigger the error validation
+                });
+
+            // Depending on if your auth middleware fires first, this will be 401 (Unauthorized) 
+            // or 400 (Bad Request from the controller). We just want to ensure it doesn't crash (500).
+            expect([400, 401]).toContain(response.statusCode);
+        });
+
+        it('should block unauthorized users from verifying fake signatures', async () => {
+            const response = await request(app)
+                .post('/api/payments/paymentverification')
+                .send({
+                    razorpay_order_id: "fake_order",
+                    razorpay_payment_id: "fake_payment",
+                    razorpay_signature: "fake_signature"
+                });
+
+            // The system should block this securely
+            expect([400, 401, 404]).toContain(response.statusCode);
+        });
+    });
+
 });
 
 // Cleanup: Disconnect from MongoDB Atlas so the test script finishes cleanly
