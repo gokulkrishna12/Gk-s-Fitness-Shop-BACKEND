@@ -57,22 +57,23 @@ describe('GK Fitness Shop API - Integration Tests', () => {
         });
     });
 
-    // 🔥 SPRINT 1 TICKET REPAIRED: Using singular /api/payment to match server.js
-    describe('POST /api/payment/checkout (Razorpay Order Generation)', () => {
-        it('should reject checkout if order items are missing', async () => {
+    // 🔥 SPRINT 1 TICKET REPAIRED: Using exact route names from paymentRoutes.js
+    describe('POST /api/payment/create-order (Razorpay Order Generation)', () => {
+        it('should block unauthorized or empty checkouts', async () => {
             const response = await request(app)
-                .post('/api/payment/checkout')
+                .post('/api/payment/create-order')
                 .send({
                     totalAmount: 500,
                     orderItems: [] 
                 });
 
+            // Expecting 401 because 'protect' middleware is active, or 400 if it passes auth but fails validation
             expect([400, 401]).toContain(response.statusCode);
         });
 
         it('should block unauthorized users from verifying fake signatures', async () => {
             const response = await request(app)
-                .post('/api/payment/paymentverification')
+                .post('/api/payment/verify-payment')
                 .send({
                     razorpay_order_id: "fake_order",
                     razorpay_payment_id: "fake_payment",
