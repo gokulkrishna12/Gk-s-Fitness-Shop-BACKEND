@@ -3,28 +3,26 @@ kind: Deployment
 metadata:
   name: gks-backend-deployment
   labels:
-    app: gks-fitness-api
+    app: gks-backend
 spec:
-  # 🔥 THIS IS THE MAGIC: We tell K8s to run 3 copies of your backend at all times!
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
-      app: gks-fitness-api
+      app: gks-backend
   template:
     metadata:
       labels:
-        app: gks-fitness-api
+        app: gks-backend
     spec:
       containers:
-        - name: api
-          image: gks-fitness-backend:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 5000
-          envFrom:
-            # Pulls your .env variables (Razorpay, Mongo Atlas, Sentry, JWT) securely
-            - secretRef:
-                name: gks-backend-secrets
+      - name: api
+        image: gks-fitness-backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+        envFrom:
+        - secretRef:
+            name: gks-fitness-secrets
 
 ---
 apiVersion: v1
@@ -32,11 +30,11 @@ kind: Service
 metadata:
   name: gks-backend-service
 spec:
-  # LoadBalancer automatically distributes user traffic across your 3 pods
-  type: LoadBalancer
+  type: NodePort
   selector:
-    app: gks-fitness-api
+    app: gks-backend
   ports:
     - protocol: TCP
-      port: 80
+      port: 5000
       targetPort: 5000
+      nodePort: 30050
