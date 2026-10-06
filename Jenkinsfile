@@ -53,9 +53,12 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                // Triggers Kubernetes to update the pods with the new image
-                sh "kubectl apply -f k8s-deployment.yaml"
-                sh "kubectl set image deployment/gks-backend-deployment api=${IMAGE_NAME}:latest"
+                // Bypass the network completely and apply the YAML directly inside the Minikube container
+                sh 'cat k8s-deployment.yaml | docker exec -i minikube kubectl apply -f -'
+                
+                // Force Kubernetes to pull the brand new latest image we just built
+                sh "docker exec -i minikube kubectl set image deployment/gks-backend-deployment api=${IMAGE_NAME}:latest"
+                
                 echo '🚀 Deployed to Kubernetes successfully!'
             }
         }
