@@ -6,18 +6,11 @@ pipeline {
     }
 
    environment {
-        IMAGE_NAME = "gks-fitness-backend"
+        // 🔥 Update this with your actual DockerHub username
+        DOCKER_IMAGE = "yourdockerhubusername/gks-fitness-backend" 
         IMAGE_TAG = "v1.${env.BUILD_ID}"
-        MONGO_URI = credentials('MONGO_DB_CREDENTIAL')
-        GOOGLE_CLIENT_ID = "ci_dummy_client_id"
-        GOOGLE_CLIENT_SECRET = "ci_dummy_secret"
-        GOOGLE_CALLBACK_URL = "http://localhost:5000/auth/google/callback"
-        GEMINI_API_KEY = "ci_dummy_gemini_key"
-        RAZORPAY_KEY_ID = "ci_dummy_razorpay_key_id"
-        RAZORPAY_KEY_SECRET = "ci_dummy_razorpay_secret"
-        JWT_SECRET = "ci_dummy_jwt_secret"
-        PORT = "5000"
     }
+    
     stages {
         stage('Checkout Code') {
             steps {
@@ -34,32 +27,32 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Push to Docker Hub') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
-                echo '✅ Docker image built securely'
+                // Ensure you add your DockerHub credentials in Jenkins!
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
+                    sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest"
+                    sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+                    sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                    sh "docker push ${DOCKER_IMAGE}:latest"
+                    echo '✅ Docker image pushed securely to cloud registry'
+                }
             }
         }
 
-       stage('Deploy to Kubernetes') {
+       stage('Deploy to AWS EC2 Kubernetes') {
             steps {
-                sh "docker exec minikube curl -sL https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl -o /kubectl"
-                sh "docker exec minikube chmod +x /kubectl"
-                
-                // Create a bulletproof deployment script that cuts out the extra IP addresses
-                sh """
-                    echo 'IP=\$(hostname -i | cut -d" " -f1)' > deploy.sh
-                    echo '/kubectl --kubeconfig=/etc/kubernetes/admin.conf --server=https://\$IP:8443 --insecure-skip-tls-verify=true apply -f /k8s-deployment.yaml' >> deploy.sh
-                    echo '/kubectl --kubeconfig=/etc/kubernetes/admin.conf --server=https://\$IP:8443 --insecure-skip-tls-verify=true set image deployment/gks-backend-deployment api=${IMAGE_NAME}:latest' >> deploy.sh
-                """
-                
-                // Copy the files directly into the container and execute safely
-                sh "docker cp k8s-deployment.yaml minikube:/k8s-deployment.yaml"
-                sh "docker cp deploy.sh minikube:/deploy.sh"
-                sh "docker exec minikube sh /deploy.sh"
-                
-                echo '🚀 Deployed to Kubernetes successfully!'
+                // Ensure you add your AWS EC2 SSH key in Jenkins!
+                sshagent(['aws-ec2-ssh-key']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ubuntu@YOUR_AWS_EC2_PUBLIC_IP '
+                        kubectl apply -f k8s-deployment.yaml &&
+                        kubectl rollout restart deployment/gks-backend-deployment
+                        '
+                    """
+                    echo '🚀 Deployed to AWS Kubernetes successfully!'
+                }
             }
         }
     }

@@ -5,7 +5,7 @@ metadata:
   labels:
     app: gks-backend
 spec:
-  replicas: 1
+  replicas: 2 # 🔥 Increased to 2 pods for zero-downtime high availability in production!
   selector:
     matchLabels:
       app: gks-backend
@@ -17,24 +17,22 @@ spec:
       containers:
       - name: api
         image: gks-fitness-backend:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always # 🔥 Forces K8s to always pull your newest Jenkins build
         ports:
         - containerPort: 5000
         envFrom:
         - secretRef:
             name: gks-fitness-secrets
-
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: gks-backend-service
 spec:
-  type: NodePort
+  type: LoadBalancer # 🔥 AWS will automatically provision a public IP for this!
   selector:
     app: gks-backend
   ports:
     - protocol: TCP
-      port: 5000
+      port: 80
       targetPort: 5000
-      nodePort: 30050
