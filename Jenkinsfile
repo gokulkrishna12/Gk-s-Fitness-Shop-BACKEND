@@ -6,7 +6,6 @@ pipeline {
     }
 
    environment {
-        // 🔥 Update this with your actual DockerHub username
         DOCKER_IMAGE = "gokulkrishna12/gks-fitness-backend" 
         IMAGE_TAG = "v1.${env.BUILD_ID}"
     }
@@ -22,7 +21,6 @@ pipeline {
         stage('Install & Test (Agile QA)') {
             steps {
                 sh 'npm install'
-                // 🔥 Temporarily bypassed because Jenkins doesn't have MongoDB Atlas access!
                 // sh 'npm test' 
                 echo '✅ Dependencies installed! Bypassing DB tests for EC2 deployment.'
             }
@@ -30,7 +28,6 @@ pipeline {
 
         stage('Build & Push to Docker Hub') {
             steps {
-                // Ensure you add your DockerHub credentials in Jenkins!
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
                     sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
                     sh "docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest"
@@ -38,21 +35,6 @@ pipeline {
                     sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
                     sh "docker push ${DOCKER_IMAGE}:latest"
                     echo '✅ Docker image pushed securely to cloud registry'
-                }
-            }
-        }
-
-       stage('Deploy to AWS EC2 Kubernetes') {
-            steps {
-                // Ensure you add your AWS EC2 SSH key in Jenkins!
-                sshagent(['aws-ec2-ssh-key']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@YOUR_AWS_EC2_PUBLIC_IP '
-                        kubectl apply -f k8s-deployment.yaml &&
-                        kubectl rollout restart deployment/gks-backend-deployment
-                        '
-                    """
-                    echo '🚀 Deployed to AWS Kubernetes successfully!'
                 }
             }
         }
