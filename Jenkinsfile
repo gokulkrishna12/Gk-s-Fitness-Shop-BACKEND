@@ -7,7 +7,7 @@ pipeline {
 
    environment {
         // 🔥 Update this with your actual DockerHub username
-        DOCKER_IMAGE = "yourdockerhubusername/gks-fitness-backend" 
+        DOCKER_IMAGE = "gokulkrishna12/gks-fitness-backend" 
         IMAGE_TAG = "v1.${env.BUILD_ID}"
     }
     
