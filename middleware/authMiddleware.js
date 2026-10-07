@@ -37,7 +37,11 @@ const protect = async (req, res, next) => {
 };
 
 const admin = (req, res, next) => {
-  if (req.user && (req.user.isAdmin === true || req.user.email.toLowerCase() === 'gokuldinesh32@gmail.com')) {
+  // 🔥 Fixed: Uses an environment variable instead of a hardcoded personal email
+  const masterEmail = process.env.MASTER_ADMIN_EMAIL ? process.env.MASTER_ADMIN_EMAIL.toLowerCase() : null;
+  const userEmail = req.user && req.user.email ? req.user.email.toLowerCase() : null;
+
+  if (req.user && (req.user.isAdmin === true || (masterEmail && userEmail === masterEmail))) {
     next();
   } else {
     console.log(`\n🚫 ADMIN ACCESS DENIED! The frontend sent a token belonging to: ${req.user ? req.user.email : 'Unknown'}\n`);

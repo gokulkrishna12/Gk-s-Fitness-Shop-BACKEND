@@ -16,13 +16,22 @@ jest.mock('@sentry/node', () => ({
 
 const request = require('supertest');
 const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../server');
 
-// 🔥 Tell Jest to wait until MongoDB connects before firing HTTP requests
+let mongoServer;
+
+// 🔥 Tell Jest to spin up an isolated memory database for CI/CD pipeline tests
 beforeAll(async () => {
-    while (mongoose.connection.readyState !== 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+    // If the server.js file already tried to connect to a fallback DB, disconnect it
+    if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect();
     }
+    
+    // Boot up the isolated memory server and connect Mongoose to it
+    mongoServer = await MongoMemoryServer.create();
+    const uri = mongoServer.getUri();
+    await mongoose.connect(uri);
 });
 
 describe('GK Fitness Shop API - Integration Tests', () => {
@@ -57,7 +66,6 @@ describe('GK Fitness Shop API - Integration Tests', () => {
         });
     });
 
-    // 🔥 SPRINT 1 TICKET REPAIRED: Using exact route names from paymentRoutes.js
     describe('POST /api/payment/create-order (Razorpay Order Generation)', () => {
         it('should block unauthorized or empty checkouts', async () => {
             const response = await request(app)
@@ -67,7 +75,6 @@ describe('GK Fitness Shop API - Integration Tests', () => {
                     orderItems: [] 
                 });
 
-            // Expecting 401 because 'protect' middleware is active, or 400 if it passes auth but fails validation
             expect([400, 401]).toContain(response.statusCode);
         });
 
@@ -86,7 +93,10 @@ describe('GK Fitness Shop API - Integration Tests', () => {
 
 });
 
-// Cleanup: Disconnect from MongoDB Atlas so the test script finishes cleanly
+// Cleanup: Stop the memory server so the Jenkins pipeline finishes cleanly
 afterAll(async () => {
     await mongoose.connection.close();
+    if (mongoServer) {
+        await mongoServer.stop();
+    }
 });
