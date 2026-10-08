@@ -19,31 +19,27 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../server');
 
+// 🔥 FIX: Tell Jest to wait up to 60 seconds because Jenkins takes time to download the Memory DB binary
+jest.setTimeout(60000);
+
 let mongoServer;
 
-// 🔥 Tell Jest to spin up an isolated memory database for CI/CD pipeline tests
+// 🔥 Added 60000ms timeout parameter to the hook
 beforeAll(async () => {
-    // If the server.js file already tried to connect to a fallback DB, disconnect it
     if (mongoose.connection.readyState !== 0) {
         await mongoose.disconnect();
     }
     
-    // Boot up the isolated memory server and connect Mongoose to it
     mongoServer = await MongoMemoryServer.create();
     const uri = mongoServer.getUri();
     await mongoose.connect(uri);
-});
+}, 60000);
 
 describe('GK Fitness Shop API - Integration Tests', () => {
 
     describe('GET / (Health Check)', () => {
         it('should return 200 and confirm the API is securely live', async () => {
             const response = await request(app).get('/');
-
-            if (response.statusCode !== 200) {
-                console.error("Health Check Failed:", response.body);
-            }
-
             expect(response.statusCode).toBe(200);
             expect(response.text).toContain('live');
         });
@@ -52,11 +48,6 @@ describe('GK Fitness Shop API - Integration Tests', () => {
     describe('GET /api/products (Product Catalog)', () => {
         it('should return a 200 status code', async () => {
             const response = await request(app).get('/api/products');
-
-            if (response.statusCode !== 200) {
-                console.error("Products API Failed:", response.body);
-            }
-
             expect(response.statusCode).toBe(200);
         });
 
@@ -74,7 +65,6 @@ describe('GK Fitness Shop API - Integration Tests', () => {
                     totalAmount: 500,
                     orderItems: [] 
                 });
-
             expect([400, 401]).toContain(response.statusCode);
         });
 
@@ -86,17 +76,16 @@ describe('GK Fitness Shop API - Integration Tests', () => {
                     razorpay_payment_id: "fake_payment",
                     razorpay_signature: "fake_signature"
                 });
-
             expect([400, 401, 404]).toContain(response.statusCode);
         });
     });
 
 });
 
-// Cleanup: Stop the memory server so the Jenkins pipeline finishes cleanly
+// 🔥 Added 60000ms timeout parameter to the hook
 afterAll(async () => {
     await mongoose.connection.close();
     if (mongoServer) {
         await mongoServer.stop();
     }
-});
+}, 60000);
